@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sistema de facturación</title>
+<style>
+:root{--bg:#eef1f5;--sf:#fff;--ink:#17202e;--mute:#5d6b7f;--line:#d8dee7;--acc:#2f4bd8;--acci:#fff;--ok:#0e7a4f;--warn:#a05a00;--bad:#b3261e;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10151d;--sf:#18202b;--ink:#e8edf4;--mute:#93a1b5;--line:#2a3544;--acc:#7b93ff;--acci:#0c1226;--ok:#4cc790;--warn:#e0a54a;--bad:#ff8a80;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#10151d;--sf:#18202b;--ink:#e8edf4;--mute:#93a1b5;--line:#2a3544;--acc:#7b93ff;--acci:#0c1226;--ok:#4cc790;--warn:#e0a54a;--bad:#ff8a80;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{background:var(--sf);border-bottom:1px solid var(--line);padding:14px 20px 0}
+.in{max-width:1000px;margin:0 auto}
+h1{font-size:20px;margin:0 0 10px;font-weight:700}
+nav{display:flex;gap:4px;overflow-x:auto}
+nav button{background:none;border:0;border-bottom:3px solid transparent;padding:10px 14px;font:inherit;color:var(--mute);cursor:pointer;white-space:nowrap}
+nav button.on{color:var(--ink);border-color:var(--acc);font-weight:700}
+main{max-width:1000px;margin:0 auto;padding:20px}
+h2{font-size:17px;margin:0 0 12px}
+.box{background:var(--sf);border:1px solid var(--line);border-radius:8px;padding:16px;margin-bottom:16px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:16px}
+.stats div{background:var(--sf);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+.stats b{display:block;font-size:22px}.stats span{color:var(--mute);font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;align-items:end}
+label{display:block;font-size:13px;color:var(--mute)}
+input,select{width:100%;font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);margin-top:3px}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.btn{font:inherit;padding:8px 14px;border-radius:6px;border:1px solid var(--line);background:var(--sf);color:var(--ink);cursor:pointer}
+.btn.p{background:var(--acc);color:var(--acci);border-color:var(--acc);font-weight:700}
+.btn.s{padding:4px 9px;font-size:13px}
+.btn.d{color:var(--bad)}
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-size:13px;color:var(--mute);font-weight:500}
+td.r,th.r{text-align:right}
+td input{margin:0;padding:5px 8px;width:90px}
+.tag{font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid currentColor}
+.pendiente{color:var(--warn)}.pagada{color:var(--ok)}.anulada{color:var(--mute);text-decoration:line-through}.low{color:var(--bad);font-weight:700}
+.empty{color:var(--mute);padding:18px 4px}
+.tot{margin-left:auto;width:260px;margin-top:12px}
+.tot p{display:flex;justify-content:space-between;margin:4px 0}.tot .g{font-size:18px;font-weight:700;border-top:1px solid var(--line);padding-top:8px}
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:6px;display:none;z-index:99}
+dialog{border:1px solid var(--line);border-radius:8px;background:var(--sf);color:var(--ink);width:min(680px,94vw);max-height:90vh;overflow:auto;padding:24px}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+.ih{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+@media print{body>*:not(dialog){display:none!important}dialog{position:static;border:0;width:100%;max-height:none;padding:0}.noprint{display:none!important}}
+</style>
+</head>
+<body>
+<header><div class="in"><h1 id="biz"></h1><nav id="nav"></nav></div></header>
+<main id="main"></main>
+<dialog id="dlg"></dialog>
+<dialog id="cam" onclose="camStop()"><video id="cv" playsinline muted style="width:100%;border-radius:6px;background:#000"></video><p id="cs" role="status" style="color:var(--mute)"></p><button class="btn p" onclick="camStop()">Cerrar cámara</button></dialog>
+<div id="toast" role="status"></div>
+<script>
+var S=load(),tab="facturas",D={cid:"",rate:null,lines:[{pid:"",qty:1}]};
+function load(){try{var r=localStorage.getItem("fact-v1");if(r)return JSON.parse(r)}catch(e){}return{clients:[],products:[],invoices:[],next:1,cfg:{name:"Mi negocio",cur:"$",tax:15}}}
+function save(){try{localStorage.setItem("fact-v1",JSON.stringify(S))}catch(e){}}
+function $(i){return document.getElementById(i)}
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function uid(){return Math.random().toString(36).slice(2,9)}
+function m(n){return S.cfg.cur+" "+Number(n).toLocaleString("es",{minimumFractionDigits:2,maximumFractionDigits:2})}
+function v(i){return $(i).value.trim()}
+function toast(t){var cs=$("cs");if(cs)cs.textContent=t;var e=$("toast");e.textContent=t;e.style.display="block";clearTimeout(toast.t);toast.t=setTimeout(function(){e.style.display="none"},5000)}
+function go(t){tab=t;render();if(t==="nueva"&&!("ontouchstart" in window))fsc()}
+function prod(id){return S.products.find(function(p){return p.id===id})}
+function client(id){return S.clients.find(function(c){return c.id===id})}
+function rate(){return D.rate==null?S.cfg.tax:D.rate}
+function calc(lines,r){var s=0;lines.forEach(function(l){s+=l.qty*l.price});return{sub:s,tax:s*r/100,total:s*(1+r/100)}}
+
+function render(){
+ $("biz").textContent=S.cfg.name;
+ var T=[["facturas","Facturas"],["nueva","Nueva factura"],["clientes","Clientes"],["productos","Productos e inventario"],["ajustes","Ajustes"]];
+ $("nav").innerHTML=T.map(function(t){return '<button class="'+(tab===t[0]?"on":"")+'" onclick="go(\''+t[0]+'\')">'+t[1]+'</button>'}).join("");
+ $("main").innerHTML=({facturas:vFact,nueva:vNueva,clientes:vCli,productos:vProd,ajustes:vAj})[tab]();
+}
+
+function vFact(){
+ var mes=new Date().toISOString().slice(0,7),vm=0,pc=0;
+ S.invoices.forEach(function(f){if(f.st==="anulada")return;if(f.date.slice(0,7)===mes)vm+=f.total;if(f.st==="pendiente")pc+=f.total});
+ var low=S.products.filter(function(p){return p.stock<=p.min}).length;
+ var h='<p style="margin:0 0 12px;text-align:right"><button class="btn" onclick="exportXlsx()">Exportar a Excel</button></p><div class="stats"><div><span>Facturado este mes</span><b>'+m(vm)+'</b></div><div><span>Por cobrar</span><b>'+m(pc)+'</b></div><div><span>Productos con poco stock</span><b>'+low+'</b></div></div>';
+ if(!S.invoices.length)return h+'<div class="box empty">Aún no hay facturas. Agrega al menos un cliente y un producto, y luego crea tu primera factura.<br><br><button class="btn p" onclick="go(\'nueva\')">Crear factura</button></div>';
+ h+='<div class="box tw"><table><tr><th>N.º</th><th>Fecha</th><th>Cliente</th><th class="r">Total</th><th>Estado</th><th></th></tr>';
+ S.invoices.slice().reverse().forEach(function(f){
+  h+='<tr><td>'+esc(f.num)+'</td><td>'+f.date+'</td><td>'+esc(f.c.name)+'</td><td class="r">'+m(f.total)+'</td><td><span class="tag '+f.st+'">'+f.st+'</span></td><td class="r">'+
+  '<button class="btn s" onclick="view(\''+f.id+'\')">Ver</button> '+
+  (f.st==="pendiente"?'<button class="btn s" onclick="pay(\''+f.id+'\')">Marcar pagada</button> ':'')+
+  (f.st!=="anulada"?'<button class="btn s d" onclick="voidInv(\''+f.id+'\')">Anular</button>':'')+'</td></tr>'});
+ return h+'</table></div>';
+}
+
+function vNueva(){
+ if(!S.clients.length||!S.products.length)return '<div class="box empty">Para facturar necesitas al menos un cliente y un producto.<br><br><button class="btn p" onclick="go(\''+(S.clients.length?"productos":"clientes")+'\')">Agregar '+(S.clients.length?"un producto":"un cliente")+'</button></div>';
+ var ls=D.lines.map(function(l){return{qty:l.qty,price:(prod(l.pid)||{price:0}).price}}),t=calc(ls,rate());
+ var h='<div class="box"><h2>Nueva factura</h2><div class="grid"><label>Cliente<select onchange="D.cid=this.value"><option value="">Elige un cliente</option>'+
+ S.clients.map(function(c){return '<option value="'+c.id+'"'+(D.cid===c.id?" selected":"")+'>'+esc(c.name)+'</option>'}).join("")+'</select></label>'+
+ '<label>Impuesto (%)<input type="number" min="0" step="0.01" value="'+rate()+'" onchange="D.rate=parseFloat(this.value)||0;render()"></label></div></div>'+
+ '<div class="box"><label>Escanear producto (o escribe el código y presiona Enter)<input id="sc" autocomplete="off" placeholder="Pasa el escáner por el código de barras" onkeydown="if(event.key===\'Enter\'){scan(this.value);event.preventDefault()}"></label><p><button class="btn" onclick="camScan(scan,true)">Escanear con la cámara</button> <button class="btn" onclick="photoScan(scan)">Tomar foto del código</button></p>'+(D.unk?'<p>El código <b>'+esc(D.unk)+'</b> no está registrado. <button class="btn s" onclick="newFromCode()">Crear producto con este código</button></p>':"")+'</div>'+
+ '<div class="box tw"><table><tr><th>Producto</th><th>Cantidad</th><th class="r">Precio</th><th class="r">Subtotal</th><th></th></tr>';
+ D.lines.forEach(function(l,i){var p=prod(l.pid);
+  h+='<tr><td><select style="min-width:220px;margin:0" onchange="D.lines['+i+'].pid=this.value;render()"><option value="">Elige un producto</option>'+
+  S.products.map(function(p){return '<option value="'+p.id+'"'+(l.pid===p.id?" selected":"")+'>'+esc(p.name)+' (stock '+p.stock+')</option>'}).join("")+'</select></td>'+
+  '<td><input type="number" min="1" value="'+l.qty+'" onchange="D.lines['+i+'].qty=Math.max(1,parseInt(this.value)||1);render()"></td>'+
+  '<td class="r">'+(p?m(p.price):"—")+'</td><td class="r">'+(p?m(p.price*l.qty):"—")+'</td>'+
+  '<td class="r">'+(D.lines.length>1?'<button class="btn s d" onclick="D.lines.splice('+i+',1);render()">Quitar</button>':"")+'</td></tr>'});
+ h+='</table><p><button class="btn s" onclick="D.lines.push({pid:\'\',qty:1});render()">Agregar línea</button></p>'+
+ '<div class="tot"><p><span>Subtotal</span><span>'+m(t.sub)+'</span></p><p><span>Impuesto ('+rate()+'%)</span><span>'+m(t.tax)+'</span></p><p class="g"><span>Total</span><span>'+m(t.total)+'</span></p></div></div>'+
+ '<button class="btn p" onclick="emit()">Emitir factura</button>';
+ return h;
+}
+
+function scan(code){
+ code=String(code).trim();if(!code)return;
+ var p=S.products.find(function(p){return p.code===code});
+ if(!p){D.unk=code;render();fsc();return toast("Código no registrado.")}
+ D.unk=null;
+ var used=0;D.lines.forEach(function(l){if(l.pid===p.id)used+=l.qty});
+ if(used+1>p.stock){render();fsc();return toast("Sin stock suficiente de "+p.name+": quedan "+p.stock+".")}
+ var ex=D.lines.find(function(l){return l.pid===p.id});
+ if(ex)ex.qty++;else{var e=D.lines.find(function(l){return !l.pid});if(e){e.pid=p.id;e.qty=1}else D.lines.push({pid:p.id,qty:1})}
+ render();fsc();toast(p.name+" agregado.")
+}
+function newFromCode(){var c=D.unk;D.unk=null;tab="productos";render();$("pc").value=c;$("pn").focus()}
+function emit(){
+ if(!D.cid)return toast("Elige un cliente para la factura.");
+ var lines=D.lines.filter(function(l){return l.pid});
+ if(!lines.length)return toast("Agrega al menos un producto.");
+ var need={};lines.forEach(function(l){need[l.pid]=(need[l.pid]||0)+l.qty});
+ for(var k in need){var p=prod(k);if(p.stock<need[k])return toast("Stock insuficiente de "+p.name+": quedan "+p.stock+".")}
+ var L=lines.map(function(l){var p=prod(l.pid);return{pid:p.id,name:p.name,price:p.price,qty:l.qty}}),r=rate(),t=calc(L,r),c=client(D.cid);
+ for(var k2 in need)prod(k2).stock-=need[k2];
+ S.invoices.push({id:uid(),num:"F-"+String(S.next++).padStart(4,"0"),date:new Date().toISOString().slice(0,10),c:{name:c.name,tid:c.tid,phone:c.phone,email:c.email,addr:c.addr},lines:L,rate:r,sub:t.sub,tax:t.tax,total:t.total,st:"pendiente"});
+ save();D={cid:"",rate:null,lines:[{pid:"",qty:1}]};tab="facturas";render();toast("Factura emitida. El inventario se actualizó.");
+}
+function pay(id){S.invoices.find(function(f){return f.id===id}).st="pagada";save();render()}
+function voidInv(id){var f=S.invoices.find(function(f){return f.id===id});f.lines.forEach(function(l){var p=prod(l.pid);if(p)p.stock+=l.qty});f.st="anulada";save();render();toast("Factura anulada. El stock fue devuelto.")}
+function view(id){
+ var f=S.invoices.find(function(f){return f.id===id});
+ $("dlg").innerHTML='<div class="ih"><div><h2 style="margin:0">'+esc(S.cfg.name)+'</h2><div style="color:var(--mute)">Factura '+f.num+'<br>Fecha: '+f.date+'</div></div><div style="text-align:right"><b>'+esc(f.c.name)+'</b><br>'+esc(f.c.tid||"")+'<br>'+esc(f.c.phone||"")+' '+esc(f.c.email||"")+'<br>'+esc(f.c.addr||"")+'</div></div>'+
+ '<div class="tw"><table><tr><th>Descripción</th><th class="r">Cant.</th><th class="r">Precio</th><th class="r">Importe</th></tr>'+
+ f.lines.map(function(l){return '<tr><td>'+esc(l.name)+'</td><td class="r">'+l.qty+'</td><td class="r">'+m(l.price)+'</td><td class="r">'+m(l.qty*l.price)+'</td></tr>'}).join("")+'</table></div>'+
+ '<div class="tot"><p><span>Subtotal</span><span>'+m(f.sub)+'</span></p><p><span>Impuesto ('+f.rate+'%)</span><span>'+m(f.tax)+'</span></p><p class="g"><span>Total</span><span>'+m(f.total)+'</span></p></div>'+
+ '<p class="noprint" style="margin-top:20px"><button class="btn p" onclick="window.print()">Imprimir</button> <button class="btn" onclick="$(\'dlg\').close()">Cerrar</button></p>';
+ $("dlg").showModal();
+}
+
+function vCli(){
+ var h='<div class="box"><h2>Nuevo cliente</h2><div class="grid"><label>Nombre<input id="cn"></label><label>RTN o identificación<input id="ct"></label><label>Teléfono<input id="cp"></label><label>Correo<input id="ce"></label><label>Dirección<input id="ca"></label><button class="btn p" onclick="addCli()">Guardar cliente</button></div></div>';
+ if(!S.clients.length)return h+'<div class="box empty">Todavía no tienes clientes guardados.</div>';
+ h+='<div class="box tw"><table><tr><th>Nombre</th><th>Identificación</th><th>Teléfono</th><th>Correo</th><th></th></tr>';
+ S.clients.forEach(function(c){h+='<tr><td>'+esc(c.name)+'</td><td>'+esc(c.tid)+'</td><td>'+esc(c.phone)+'</td><td>'+esc(c.email)+'</td><td class="r"><button class="btn s d" onclick="delCli(\''+c.id+'\')">Eliminar</button></td></tr>'});
+ return h+'</table></div>';
+}
+function addCli(){if(!v("cn"))return toast("Escribe el nombre del cliente.");S.clients.push({id:uid(),name:v("cn"),tid:v("ct"),phone:v("cp"),email:v("ce"),addr:v("ca")});save();render();toast("Cliente guardado.")}
+function delCli(id){S.clients=S.clients.filter(function(c){return c.id!==id});save();render()}
+
+function vProd(){
+ var h='<div class="box"><h2>Nuevo producto</h2><div class="grid"><label>Nombre<input id="pn"></label><label>Código (escanéalo aquí)<input id="pc" onkeydown="if(event.key===\'Enter\'){$(\'pp\').focus()}"></label><button class="btn" onclick="camScan(function(c){$(\'pc\').value=c;$(\'pp\').focus()},false)">Leer código con la cámara</button> <button class="btn" onclick="photoScan(function(c){$(\'pc\').value=c;$(\'pp\').focus()})">Tomar foto del código</button><label>Precio<input id="pp" type="number" min="0" step="0.01"></label><label>Stock inicial<input id="ps" type="number" min="0" value="0"></label><label>Avisar si queda<input id="pm" type="number" min="0" value="5"></label><button class="btn p" onclick="addProd()">Guardar producto</button></div></div>';
+ if(!S.products.length)return h+'<div class="box empty">Todavía no tienes productos.</div>';
+ h+='<div class="box tw"><table><tr><th>Código</th><th>Producto</th><th class="r">Precio</th><th>Stock</th><th></th></tr>';
+ S.products.forEach(function(p){h+='<tr><td>'+esc(p.code)+'</td><td>'+esc(p.name)+(p.stock<=p.min?' <span class="low">Poco stock</span>':"")+'</td><td class="r">'+m(p.price)+'</td><td><input type="number" min="0" value="'+p.stock+'" onchange="setStock(\''+p.id+'\',this.value)" aria-label="Stock de '+esc(p.name)+'"></td><td class="r"><button class="btn s d" onclick="delProd(\''+p.id+'\')">Eliminar</button></td></tr>'});
+ return h+'</table></div>';
+}
+function addProd(){var pr=parseFloat(v("pp"));if(!v("pn")||isNaN(pr))return toast("Escribe el nombre y el precio.");if(v("pc")&&S.products.some(function(p){return p.code===v("pc")}))return toast("Ya existe un producto con ese código.");S.products.push({id:uid(),code:v("pc"),name:v("pn"),price:pr,stock:parseInt(v("ps"))||0,min:parseInt(v("pm"))||0});save();render();toast("Producto guardado.")}
+function setStock(id,x){prod(id).stock=Math.max(0,parseInt(x)||0);save();render()}
+function delProd(id){S.products=S.products.filter(function(p){return p.id!==id});save();render()}
+
+function vAj(){
+ return '<div class="box"><h2>Ajustes del negocio</h2><div class="grid"><label>Nombre del negocio<input id="an" value="'+esc(S.cfg.name)+'"></label><label>Símbolo de moneda<input id="ac" value="'+esc(S.cfg.cur)+'"></label><label>Impuesto por defecto (%)<input id="at" type="number" min="0" step="0.01" value="'+S.cfg.tax+'"></label><button class="btn p" onclick="saveCfg()">Guardar ajustes</button></div></div>'+
+ '<div class="box"><h2>Copia de seguridad</h2><p style="color:var(--mute)">Los datos se guardan en este navegador. Descarga una copia con frecuencia para no perderlos y para pasarlos a otro equipo.</p><button class="btn p" onclick="exportData()">Descargar copia</button> <button class="btn" onclick="exportXlsx()">Exportar a Excel</button> <button class="btn" onclick="$(\'imp\').click()">Restaurar copia</button><input id="imp" type="file" accept=".json" style="display:none" onchange="importData(this.files[0])"> <button class="btn d" onclick="if(confirm(\'¿Borrar todos los datos?\')){try{localStorage.removeItem(\'fact-v1\')}catch(e){}S=load();render()}">Borrar todos los datos</button></div>';
+}
+function saveCfg(){S.cfg={name:v("an")||"Mi negocio",cur:v("ac")||"$",tax:parseFloat(v("at"))||0};save();render();toast("Ajustes guardados.")}
+function dl(b,n){var a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=n;document.body.appendChild(a);a.click();a.remove()}
+function fsc(){var e=$("sc");if(e&&!CAM)e.focus()}
+var CAM=null;
+function camScan(cb,cont){
+ if(!("BarcodeDetector" in window)||!navigator.mediaDevices)return toast("Este navegador no permite escanear con la cámara. Usa el botón «Tomar foto del código» o un escáner USB.");
+ var det=new BarcodeDetector();
+ navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}}).catch(function(e){if(e&&e.name==="OverconstrainedError")return navigator.mediaDevices.getUserMedia({video:true});throw e}).then(function(st){
+  CAM={st:st,last:"",t:0};
+  var vd=$("cv");vd.srcObject=st;vd.play();$("cs").textContent="Apunta la cámara al código de barras.";$("cam").showModal();
+  (function loop(){
+   if(!CAM)return;
+   det.detect(vd).then(function(r){
+    if(CAM&&r.length){var c=r[0].rawValue,n=Date.now();
+     if(c!==CAM.last||n-CAM.t>2000){CAM.last=c;CAM.t=n;if(navigator.vibrate)navigator.vibrate(80);cb(c);if(!cont)camStop()}}
+   }).catch(function(){}).then(function(){if(CAM)setTimeout(loop,250)});
+  })();
+ }).catch(function(e){var n=e&&e.name,t;
+  if(window.self!==window.top)t="La cámara no está disponible dentro de una página incrustada. Abre el archivo descargado directamente en el navegador.";
+  else if(n==="NotAllowedError")t="Permiso de cámara denegado. Toca el candado junto a la dirección, permite la cámara y vuelve a intentar. Si no aparece, usa «Tomar foto del código».";
+  else if(n==="NotFoundError")t="No se encontró ninguna cámara en este dispositivo.";
+  else if(n==="NotReadableError")t="La cámara está siendo usada por otra aplicación. Ciérrala e intenta de nuevo.";
+  else t="El navegador bloquea la cámara en este tipo de página ("+(n||"error")+"). Usa «Tomar foto del código».";
+  toast(t)});
+}
+function photoScan(cb){
+ var i=document.createElement("input");i.type="file";i.accept="image/*";i.setAttribute("capture","environment");
+ i.onchange=function(){var f=i.files[0];if(!f)return;
+  if(!("BarcodeDetector" in window))return toast("Este navegador no puede leer códigos de barras. Usa un escáner USB o Chrome.");
+  createImageBitmap(f).then(function(b){return new BarcodeDetector().detect(b)}).then(function(r){if(r.length)cb(r[0].rawValue);else toast("No se detectó ningún código. Acércate un poco y vuelve a intentar.")}).catch(function(){toast("No se pudo leer la foto. Intenta de nuevo.")});
+ };i.click();
+}
+function camStop(){if(CAM){CAM.st.getTracks().forEach(function(t){t.stop()});CAM=null}var d=$("cam");if(d.open)d.close()}
+/*XLSX*/
+function crc32(b){var c,t=crc32.t;if(!t){t=crc32.t=[];for(var n=0;n<256;n++){c=n;for(var k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}}var r=-1;for(var i=0;i<b.length;i++)r=t[(r^b[i])&255]^(r>>>8);return(r^-1)>>>0}
+function zip(files){
+ var enc=new TextEncoder(),parts=[],cd=[],off=0;
+ files.forEach(function(f){
+  var nm=enc.encode(f[0]),d=enc.encode(f[1]),crc=crc32(d),h=new DataView(new ArrayBuffer(30)),c=new DataView(new ArrayBuffer(46));
+  h.setUint32(0,0x04034b50,true);h.setUint16(4,20,true);h.setUint16(12,33,true);h.setUint32(14,crc,true);h.setUint32(18,d.length,true);h.setUint32(22,d.length,true);h.setUint16(26,nm.length,true);
+  parts.push(new Uint8Array(h.buffer),nm,d);
+  c.setUint32(0,0x02014b50,true);c.setUint16(4,20,true);c.setUint16(6,20,true);c.setUint16(14,33,true);c.setUint32(16,crc,true);c.setUint32(20,d.length,true);c.setUint32(24,d.length,true);c.setUint16(28,nm.length,true);c.setUint32(42,off,true);
+  cd.push(new Uint8Array(c.buffer),nm);off+=30+nm.length+d.length;
+ });
+ var cs=0,e=new DataView(new ArrayBuffer(22));cd.forEach(function(x){cs+=x.length});
+ e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,cs,true);e.setUint32(16,off,true);
+ return new Blob(parts.concat(cd,[new Uint8Array(e.buffer)]),{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"})
+}
+function rowsXml(rows){return rows.map(function(r,i){return '<row r="'+(i+1)+'">'+r.map(function(c,j){var ref=String.fromCharCode(65+j)+(i+1);return typeof c==="number"?'<c r="'+ref+'"><v>'+c+'</v></c>':'<c r="'+ref+'" t="inlineStr"><is><t>'+esc(c)+'</t></is></c>'}).join("")+'</row>'}).join("")}
+function exportXlsx(){
+ var R={fac:[["N.º","Fecha","Cliente","Identificación","Subtotal","Impuesto","Total","Estado"]],det:[["N.º","Fecha","Cliente","Producto","Cantidad","Precio","Importe","Estado"]],cli:[["Nombre","Identificación","Teléfono","Correo","Dirección"]],pro:[["Código","Producto","Precio","Stock","Stock mínimo"]]};
+ S.invoices.forEach(function(f){R.fac.push([f.num,f.date,f.c.name,f.c.tid||"",f.sub,f.tax,f.total,f.st]);f.lines.forEach(function(l){R.det.push([f.num,f.date,f.c.name,l.name,l.qty,l.price,l.qty*l.price,f.st])})});
+ S.clients.forEach(function(c){R.cli.push([c.name,c.tid||"",c.phone||"",c.email||"",c.addr||""])});
+ S.products.forEach(function(p){R.pro.push([p.code||"",p.name,p.price,p.stock,p.min])});
+ var names=["Facturas","Detalle","Clientes","Productos"],keys=["fac","det","cli","pro"],ns='xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"',rl="http://schemas.openxmlformats.org/officeDocument/2006/relationships",X='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+ var files=[["[Content_Types].xml",X+'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'+keys.map(function(k,i){return '<Override PartName="/xl/worksheets/sheet'+(i+1)+'.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'}).join("")+'</Types>'],
+ ["_rels/.rels",X+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="'+rl+'/officeDocument" Target="xl/workbook.xml"/></Relationships>'],
+ ["xl/workbook.xml",X+'<workbook '+ns+' xmlns:r="'+rl+'"><sheets>'+names.map(function(n,i){return '<sheet name="'+n+'" sheetId="'+(i+1)+'" r:id="rId'+(i+1)+'"/>'}).join("")+'</sheets></workbook>'],
+ ["xl/_rels/workbook.xml.rels",X+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+keys.map(function(k,i){return '<Relationship Id="rId'+(i+1)+'" Type="'+rl+'/worksheet" Target="worksheets/sheet'+(i+1)+'.xml"/>'}).join("")+'</Relationships>']];
+ keys.forEach(function(k,i){files.push(["xl/worksheets/sheet"+(i+1)+".xml",X+'<worksheet '+ns+'><cols><col min="1" max="8" width="20" customWidth="1"/></cols><sheetData>'+rowsXml(R[k])+'</sheetData></worksheet>'])});
+ dl(zip(files),"facturacion-"+new Date().toISOString().slice(0,10)+".xlsx");
+}
+/*END*/
+function exportData(){var a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(S)],{type:"application/json"}));a.download="facturacion-"+new Date().toISOString().slice(0,10)+".json";document.body.appendChild(a);a.click();a.remove()}
+function importData(f){if(!f)return;var r=new FileReader();r.onload=function(){try{var d=JSON.parse(r.result);if(!d.clients||!d.products||!d.invoices)throw 0;S=d;save();render();toast("Copia restaurada.")}catch(e){toast("El archivo no es una copia válida.")}};r.readAsText(f)}
+render();
+</script>
+</body>
+</html>
